@@ -16,6 +16,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -24,17 +25,17 @@ public class SendEmailService {
 	@Value(value = "${spring.mail.username}")
 	private String sender;
 
-	private String verifyAccountRegisterTemplatePath = "/templates/email/EmailVerifyAccountRegister.html";
+	private String verifyAccountRegisterTemplatePath = "/templates/emails/EmailVerifyAccountRegister.html";
 
-	private String verifyAccountCreateTemplatePath = "/templates/email/EmailVerifyAccountCreate.html";
+	private String verifyAccountCreateTemplatePath = "/templates/emails/EmailVerifyAccountCreate.html";
 
-	private String forgotPasswordTemplatePath = "/templates/email/EmailForgotPassword.html";
+	private String forgotPasswordTemplatePath = "/templates/emails/EmailForgotPassword.html";
 	
 	@Autowired
 	JavaMailSender javaMailSender;
 	
 	private String proceedData(String templatePath, Map<String, String> properties) throws IOException {
-		
+
 		Resource resource = new ClassPathResource(templatePath);
 		File file = resource.getFile();
 		
@@ -49,6 +50,7 @@ public class SendEmailService {
 		return html;
 	}
 
+	@Async
 	public void sendVerifyAccountRegister(Map<String, String> properties, String toAddress) throws MessagingException, IOException {
 		
 		MimeMessage message = javaMailSender.createMimeMessage();
@@ -63,6 +65,7 @@ public class SendEmailService {
 		
 	}
 
+	@Async
 	public void sendVerifyAccountCreate(Map<String, String> properties, String toAddress) throws MessagingException, IOException {
 
 		MimeMessage message = javaMailSender.createMimeMessage();
@@ -77,6 +80,7 @@ public class SendEmailService {
 
 	}
 
+	@Async
 	public void sendForgotPasswordEmail(Map<String, String> properties, String toAddress) throws MessagingException, IOException {
 
 		MimeMessage message = javaMailSender.createMimeMessage();

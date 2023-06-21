@@ -1,31 +1,31 @@
 package com.tma.controller;
 
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import javax.validation.Valid;
-import javax.validation.constraints.Positive;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tma.exception.NotFoundException;
+import com.tma.model.dto.response.ResponseModelDTO;
+import com.tma.model.dto.response.ResponsePageDTO;
 import io.swagger.v3.oas.annotations.Operation;
-import org.modelmapper.ModelMapper;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import com.tma.dto.permission.PermissionCreateDTO;
-import com.tma.entity.Permission;
-import com.tma.response.ResponseModel;
-import com.tma.service.IPermissionService;
+import com.tma.model.dto.permission.PermissionCreateDTO;
+import com.tma.service.permission.PermissionService;
 
 
 @RestController
@@ -33,66 +33,73 @@ import com.tma.service.IPermissionService;
 public class PermissionController {
 	
 	@Autowired
-	ModelMapper modelMapper;
+	private PermissionService permissionService;
 	
-	@Autowired
-	IPermissionService permissionService;
-	
-	@GetMapping("")
+	@GetMapping
 	@Operation(summary = "Get all permissions")
-	public ResponseEntity<?> getAll(
-			@RequestParam(defaultValue = "1") @Positive int page, 
-			@RequestParam(defaultValue = "5") @Positive int limit) {
-		Pageable paging = PageRequest.of(page - 1, limit, Sort.by("permissionCode").ascending());
-		
-		List<Permission> permissions = new ArrayList<Permission>();
-		Page<Permission> pagePermissions = permissionService.findAll(paging);
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Find all equipments successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
 
-		permissions = pagePermissions.getContent();
-		Map<String, Object> response = new HashMap<>();
-		response.put("permissions", permissions);
-		response.put("currentPage", pagePermissions.getNumber() + 1);
-		response.put("totalItems", pagePermissions.getTotalElements());
-		response.put("totalPages", pagePermissions.getTotalPages());
-		
-		return ResponseEntity.status(HttpStatus.OK).body(
-				new ResponseModel<>(true, "Successfully", response));
+	})
+	public ResponseEntity<ResponsePageDTO> getAll(
+			@RequestParam(name = "keyword", defaultValue = "") String keyword,
+			@RequestParam(name = "page", defaultValue = "0") int page, //page number
+			@RequestParam(name = "limit", defaultValue = "20") int limit, //page size
+			@RequestParam(name = "orderBy", defaultValue = "name") String orderBy, //database field
+			@RequestParam(name = "sortBy", defaultValue = "asc") String sortBy
+	) {
+
+		Sort sort = Sort.by(sortBy.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC, orderBy);
+
+		Pageable pageable = PageRequest.of(page, limit, sort);
+		return ResponseEntity.ok().body(permissionService.findAll(keyword, pageable));
+
 	}
 	
-	@PostMapping("")
+	@PostMapping
 	@Operation(summary = "Create a new permission")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> create(@Valid @RequestBody PermissionCreateDTO permissionCreateDTO) {
-		
-		Permission permission = modelMapper.map(permissionCreateDTO, Permission.class);
-		
-		return ResponseEntity.status(HttpStatus.OK).body(
-				new ResponseModel<Permission>(true, "Successfully", permissionService.save(permission)));
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Create a new permission successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
+			@ApiResponse(responseCode = "400", description = "Bad request")
+
+	})
+	@PreAuthorize("hasAuthority('SUPER_ADMIN')")
+	public ResponseEntity<ResponseModelDTO> create(@Valid @RequestBody PermissionCreateDTO permissionCreateDTO) {
+
+		return ResponseEntity.ok().body(permissionService.createNewPermission(permissionCreateDTO));
 	}
 
 	@PutMapping("/{id}")
 	@Operation(summary = "Update a permission")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> update(@PathVariable UUID id, @Valid @RequestBody PermissionCreateDTO permissionCreateDTO) {
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Update a permission successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
+			@ApiResponse(responseCode = "404", description = "Not Found")
 
-		Permission permission = modelMapper.map(permissionCreateDTO, Permission.class);
-		permission.setPermissionId(id);
+	})
+	@PreAuthorize("hasAuthority('SUPER_ADMIN')")
+	public ResponseEntity<ResponseModelDTO> update(@PathVariable UUID id, @Valid @RequestBody PermissionCreateDTO permissionCreateDTO) throws NotFoundException {
 
-		return ResponseEntity.status(HttpStatus.OK).body(
-				new ResponseModel<Permission>(true, "Successfully", permissionService.save(permission)));
+		return ResponseEntity.ok().body(permissionService.updateById(id, permissionCreateDTO));
 	}
 	
 	@DeleteMapping("/{id}")
 	@Operation(summary = "Delete a permission")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> delete(@PathVariable UUID id) {
-		try {
-			permissionService.deleteById(id);
-			return ResponseEntity.status(HttpStatus.OK).body(
-					new ResponseModel<>(true, "Successfully"));
-		} catch (Exception ex) {
-			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-					new ResponseModel<>(false, ex.getMessage()));
-		}
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Delete a permission successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
+			@ApiResponse(responseCode = "404", description = "Not Found")
+
+	})
+	@PreAuthorize("hasAuthority('SUPER_ADMIN')")
+	public ResponseEntity<?> delete(@PathVariable UUID id) throws JsonProcessingException, NotFoundException {
+		permissionService.softDeleteById(id);
+
+		ObjectMapper mapper = new ObjectMapper();
+		JsonNode json = mapper.readTree("{\"message\":\"Delete permission successfully\"}");
+
+		return ResponseEntity.ok().body(json);
 	}
 }

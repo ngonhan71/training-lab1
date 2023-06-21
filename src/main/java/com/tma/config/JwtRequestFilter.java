@@ -7,17 +7,23 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import io.jsonwebtoken.JwtException;
+import com.tma.controller.AuthController;
+import com.tma.enums.TokenTypes;
+import com.tma.utils.JwtUserDetailsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.tma.service.impl.AppUserDetailsServiceImpl;
 import com.tma.utils.JwtUtil;
 
 import io.jsonwebtoken.ExpiredJwtException;
@@ -26,41 +32,39 @@ import io.jsonwebtoken.ExpiredJwtException;
 public class JwtRequestFilter extends OncePerRequestFilter {
 	
 	@Autowired
-	AppUserDetailsServiceImpl appUserDetailsServiceImpl;
+	private JwtUserDetailsService jwtUserDetailsService;
 	
 	@Autowired
-	JwtUtil jwtUtil;
+	private JwtUtil jwtUtil;
 
 	@Autowired
-	RedisTemplate redisTemplate;
+	private RedisTemplate redisTemplate;
+
+	private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
 		// TODO Auto-generated method stub
-		
-		final String authHeader = request.getHeader("Authorization");
-		String jwtToken = null;
+
 		String username = null;
 
-		if (authHeader != null && authHeader.startsWith("Bearer ")) {
-			jwtToken = authHeader.substring(7);
+		String jwtToken = getJwtFromRequest(request);
 
-			if (redisTemplate.opsForValue().get(jwtToken) != null || redisTemplate.hasKey(jwtToken) == true) {
-				try {
-					username = jwtUtil.getUsername(jwtToken);
-				} catch (IllegalArgumentException e) {
-					System.out.println("Unable to get JWT Token");
-				} catch (ExpiredJwtException e) {
-					System.out.println("JWT Token has expired");
-				}
+		if (StringUtils.hasText(jwtToken)) {
+			try {
+				username = jwtUtil.getUsername(jwtToken);
+			} catch (IllegalArgumentException e) {
+				logger.error("Unable to get JWT Token");
+			} catch (ExpiredJwtException e) {
+				logger.error("JWT Token has expired");
 			}
-
 		}
+
 
 		if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 			
-			UserDetails userDetails = appUserDetailsServiceImpl.loadUserByUsername(username);
+			UserDetails userDetails = jwtUserDetailsService.loadUserByUsername(username);
 			
 			if (jwtUtil.validateToken(jwtToken, userDetails)) {
 				UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(userDetails, null,
@@ -73,6 +77,14 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 		}
 		filterChain.doFilter(request, response);
 		
+	}
+
+	private String getJwtFromRequest(HttpServletRequest httpServletRequest) {
+		String bearerToken = httpServletRequest.getHeader("Authorization");
+		if (StringUtils.hasText(bearerToken) &&  bearerToken.startsWith("Bearer ")) {
+			return bearerToken.substring(7);
+		}
+		return null;
 	}
 
 }

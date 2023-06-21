@@ -1,99 +1,95 @@
 package com.tma.controller;
 
-import java.util.List;
 import java.util.UUID;
 
 import javax.validation.Valid;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tma.exception.NotFoundException;
+import com.tma.model.dto.response.ResponseModelDTO;
 import io.swagger.v3.oas.annotations.Operation;
-import org.modelmapper.ModelMapper;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import com.tma.dto.role.RoleCreateDTO;
-import com.tma.entity.Role;
-import com.tma.response.ResponseModel;
-import com.tma.service.IRoleService;
+import com.tma.model.dto.role.RoleCreateDTO;
+import com.tma.service.role.RoleService;
 
 @RestController
 @RequestMapping("api/v1/roles")
 public class RoleController {
 	
 	@Autowired
-	ModelMapper modelMapper;
+	private RoleService roleService;
 	
-	@Autowired
-	IRoleService roleService;
-	
-	@GetMapping("")
+	@GetMapping
 	@Operation(summary = "Get all roles")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> getAll() {
-		return ResponseEntity.status(HttpStatus.OK).body(
-				new ResponseModel<List<Role>>(true, "Successfully", roleService.findAll()));
+	@PreAuthorize("hasAuthority('SUPER_ADMIN')")
+	public ResponseEntity<?> getAll(
+			@RequestParam(name = "page", defaultValue = "0") int page, //page number
+			@RequestParam(name = "limit", defaultValue = "20") int limit, //page size
+			@RequestParam(name = "orderBy", defaultValue = "name") String orderBy, //database field
+			@RequestParam(name = "sortBy", defaultValue = "asc") String sortBy
+	) {
+		Sort sort = Sort.by(sortBy.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC, orderBy);
+
+		Pageable pageable = PageRequest.of(page, limit, sort);
+		return ResponseEntity.ok().body(roleService.findAll(pageable));
+
 	}
 	
 	@GetMapping("/{id}")
 	@Operation(summary = "Get a role")
-	public ResponseEntity<?> getById(@PathVariable UUID id) {
-		return ResponseEntity.status(HttpStatus.OK).body(
-				new ResponseModel<Role>(true, "Successfully", roleService.findById(id)));
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Find a role successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
+			@ApiResponse(responseCode = "404", description = "Not Found")
+
+	})
+	public ResponseEntity<ResponseModelDTO> findById(@PathVariable UUID id) throws NotFoundException {
+		return ResponseEntity.ok().body(roleService.findById(id));
 	}
 	
-	@PostMapping("")
+	@PostMapping
 	@Operation(summary = "Create a new role")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> create(@Valid @RequestBody RoleCreateDTO roleCreateDTO) {
-		
-		Role entity = modelMapper.map(roleCreateDTO, Role.class);
-		
-		return ResponseEntity.status(HttpStatus.OK).body(
-				new ResponseModel<Role>(true, "Successfully", roleService.save(entity)));
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Create a new role successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
+			@ApiResponse(responseCode = "400", description = "Bad request")
+
+	})
+	@PreAuthorize("hasAuthority('SUPER_ADMIN')")
+	public ResponseEntity<ResponseModelDTO> create(@Valid @RequestBody RoleCreateDTO roleCreateDTO) {
+
+		return ResponseEntity.ok().body(roleService.createNewRole(roleCreateDTO));
 	}
 
-	
-	@PostMapping("/{roleId}/grant-permission/{permissionId}")
-	@Operation(summary = "Grant permission to role")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> grantPermission(@Valid @PathVariable UUID roleId, @PathVariable UUID permissionId) {
+	@DeleteMapping("/{id}")
+	@Operation(summary = "Delete a role")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Delete a role successfully", content = @Content(mediaType = "application/json",
+					schema = @Schema(implementation = ResponseModelDTO.class))),
+			@ApiResponse(responseCode = "404", description = "Not Found")
 
-		if (roleService.grantPermission(roleId, permissionId)) {
-			return ResponseEntity.status(HttpStatus.OK).body(
-					new ResponseModel<>(true, "Successfully", null));
-		}
-		
-		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-				new ResponseModel<>(false, "Failed", null));
-	}
+	})
+	@PreAuthorize("hasAuthority('SUPER_ADMIN')")
+	public ResponseEntity<?> delete(@PathVariable UUID id) throws JsonProcessingException, NotFoundException {
+		roleService.softDeleteById(id);
 
-	@PutMapping("/{roleId}/update-permission")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> updatePermission(@Valid @PathVariable UUID roleId, @RequestBody List<UUID> permissions) {
+		ObjectMapper mapper = new ObjectMapper();
+		JsonNode json = mapper.readTree("{\"message\":\"Delete role successfully\"}");
 
-		if (roleService.updatePermission(roleId, permissions)) {
-			return ResponseEntity.status(HttpStatus.OK).body(
-					new ResponseModel<>(true, "Update permission Successfully", null));
-		}
-
-		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-				new ResponseModel<>(false, "Failed", null));
-	}
-	@DeleteMapping("/{roleId}/revoke-permission/{permissionId}")
-	@Operation(summary = "Revoke permission from role")
-	@PreAuthorize("hasAuthority('PERMISSION_MANAGEMENT')")
-	public ResponseEntity<?> revokePermission(@PathVariable UUID roleId, @PathVariable UUID permissionId) {
-
-		if (roleService.revokePermission(roleId, permissionId)) {
-			return ResponseEntity.status(HttpStatus.OK).body(
-					new ResponseModel<>(true, "Successfully", null));
-		}
-
-		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-				new ResponseModel<>(false, "Failed", null));
-
+		return ResponseEntity.ok().body(json);
 	}
 	
 }
